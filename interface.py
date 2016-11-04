@@ -1,69 +1,76 @@
 import sys
 import vlc
+import controls
+import threading
+import time
 
 from PyQt4.QtGui import *
 from PyQt4.QtCore import *
 
-FRONT = 0
-REAR  = 1
+CONTROLLER_HOST = "192.168.42.1"
+CONTROLLER_PORT = 1337
 
-camWins = [0, 0, 0]
-frontCam = 0
+PLAYER_VOLUME = 0
+
+address_front_cam = "http://88.53.197.250:80/axis-cgi/mjpg/video.cgi?resolution=320x240"
+address_rear_cam = "http://88.53.197.250:80/axis-cgi/mjpg/video.cgi?resolution=320x240"
 
 # Handles instances of VLC media player
 # Players can be created and recalled after a window has been closed
 class MediaManager:
-
-    instance = vlc.Instance()
-    streamList = []
-    IDs = []
-    
-    #def __init__(self, parent = None):
-        #instance = vlc.Instance()
-
+        
+    def __init__(self, parent = None):
+        self.instance = vlc.Instance()
+        # Dict containing player instances
+        self.streamList = {}
+ 
     def newPlayer (self, ID, path, volume):
+        
+        # If a player already exists with this ID, return it
+        if self.streamList.get(ID.capitalize()):
+            return self.streamList.get(ID.capitalize())
+
         # VLC setup
         media = self.instance.media_new(path)
             
-        # Initializing media player
-        player = self.instance.media_player_new()
+        # Initializing new media player and adding to dict
+        player = self.streamList[ID.capitalize()] = self.instance.media_player_new()
         player.set_media (media)
          
-        player.audio_set_volume(volume) 
- 
-        self.streamList.append (player)
-        self.IDs.append (ID)
-
+        player.audio_set_volume(PLAYER_VOLUME) 
+        
         return player
-
-    def getPlayer (self, ID):
-        count = 0
-        for s in self.IDs:                        
-
-            if (s.capitalize == ID.capitalize):
-                return self.streamList[count]
-            count += 1
         
 # Manages the Tiled Windows within the primary window.
 class SubWindow(QWidget):
     def __init__(self, parent = None):
         super(SubWindow, self).__init__(parent)
-                             
+
+        graphicsView = QGraphicsView()
+        graphicsView.setStyleSheet("border: 0px")
+
+        grid = QGridLayout()
+        grid.addWidget(graphicsView)
+
+        self.setLayout(grid)
+
+                                     
     def closeEvent(self, event):
-        if (self.windowTitle == "Front Cam"):
-            camWins[FRONT] = 1
+        parent.self.windowTitle()
         event.accept()
 
 # Primary Window Setup.
 class PrimaryWindow (QMainWindow):
-    # Tracks the number of Sub Windows currently existing in the system.
-    subCount = 0
-
-    # Initiating the VLC Player Manager
-    Media = MediaManager() 
-
+    
     # Runs on boot.
     def __init__ (self, parent = None):
+        # Tracks the number of Sub Windows currently existing in the system.
+        self.subCount = 0
+
+        # Initiating the VLC Player Manager
+        self.Media = MediaManager() 
+
+
         super (PrimaryWindow, self).__init__(parent)
         self.mdi = QMdiArea()
         self.setCentralWidget (self.mdi)
@@ -93,7 +100,8 @@ class PrimaryWindow (QMainWindow):
     
     # Manages key actions
     def keyPressEvent (self, q):
-        print q.key()
+        # Uncomment to debug key numbers
+        # print q.key()
 
         # Lookup table to connect keys to functions
         keys = {
@@ -101,18 +109,20 @@ class PrimaryWindow (QMainWindow):
         }
 
         # Runs the function linked to the pressed key
-        keys[(chr(q.key()) if q.key() < 256 else q.key())]()
+        try:
+            keys[(chr(q.key()) if q.key() < 256 else q.key())]()
+        except:
+            print
 
     # Creates a new camera subwindow and links a VLC player to it.
     def newCamWindow (self, name, player):
-        PrimaryWindow.subCount = PrimaryWindow.subCount+1
+        self.subCount = self.subCount+1
                 
         win = SubWindow()
         win.setMinimumSize (300,300)
         #front.setWidget (QTextEdit())
         win.setWindowTitle (name)
-        self.mdi.addSubWindow(win)
-         
+        self.mdi.addSubWindow(win) 
             
         # Linking VLC Player to Qt SubWindow
         newWin = int(win.winId())
@@ -127,51 +137,50 @@ class PrimaryWindow (QMainWindow):
 
     # Initializes a VLC Media Player and creates a new window with the corresponding Title.
     def camWindows (self, q):
-        
-        #Sample for testing video streaming.
-        path = "/home/greg/Downloads/Chevelle_The_Red.mp4"
-
         if q.text() == "Front":
-            
             name = "Front Cam"
-            camNum = FRONT
 
-            if not (camWins[camNum]):
-                # Initializing media player
-                player = self.Media.newPlayer (name, path, 0)
+            # Initializing media player
+            player = self.Media.newPlayer (name, address_front_cam, 0)
                 
-                player.play()
-                            
-            if not (camWins[camNum] == 2):
-                player = self.Media.getPlayer (name) 
+            player.play() 
 
-                cam = self.newCamWindow(name, player)
+            cam = self.newCamWindow(name, player)
                 
-                cam.show()                     
-            
-                camWins[camNum] = 2
-        
+            cam.show()                     
+                    
         if q.text() == "Rear":
             name = "Rear Cam"
             camNum = REAR
 
-            if not (camWins[camNum]):
-                # Initializing media player
-                player = self.Media.newPlayer (name, path, 0)
+            # Initializing media player
+            player = self.Media.newPlayer (name, address_rear_cam, 0)
                 
-                player.play()
-                            
-            if not (camWins[camNum] == 2):
-                player = self.Media.getPlayer (name) 
+            player.play() 
 
-                cam = self.newCamWindow(name, player)
+            cam = self.newCamWindow(name, player)
                 
-                cam.show()                     
-            
-                camWins[camNum] = 2
+            cam.show()                     
 
+# This loop manages the controller updates.
+def controllerLoop ():
+    controller = controls.Driver(CONTROLLER_HOST, CONTROLLER_PORT)
+    while controller._isValid():
+        controller.updateValues()
+        time.sleep(0.05)
 
+    self._stop.set()
+        
 def main():
+
+    run = True
+
+    # Setup the control device.
+    #controller_thread = StoppableThread(threading.Thread(target = controllerLoop).start())
+    threading.Thread(target = controllerLoop).start()
+    
+    # controllerLoop();
+
     # Create the Qt app object.
     app = QApplication(sys.argv)
 
@@ -180,6 +189,10 @@ def main():
     
     # Show window after all setups are complete.
     ex.show ()
+    
+    run = False
+
+    time.sleep(2)
 
     sys.exit(app.exec_())
 
