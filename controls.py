@@ -8,9 +8,9 @@ camera_speed_mult = 0.002
 
 pygame.init()
 
-screen = pygame.display.set_mode((100,100))
+screen = pygame.display.set_mode((1,1))
+pygame.display.quit()
 
-pygame.display.iconify()
 # Manages linkage between the Controller and the Vehicle
 class Driver:
     def __init__(self, host, port):
